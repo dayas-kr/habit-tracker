@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#ffffff">
+    <title>Habit tracker</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%85%3C/text%3E%3C/svg%3E">
+
+    <!-- Font (mono) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/jetbrains-mono@5.2.5/index.css">
+
+    <!-- Tailwind CSS v4 (browser build) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+
+    <style>[x-cloak] { display: none !important; }</style>
+
+    <style type="text/tailwindcss">
+        /* shadcn/ui "neutral" tokens + mono font */
+        @theme {
+            --font-sans: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+            --color-background: oklch(1 0 0);
+            --color-foreground: oklch(0.145 0 0);
+            --color-card: oklch(1 0 0);
+            --color-card-foreground: oklch(0.145 0 0);
+            --color-primary: oklch(0.205 0 0);
+            --color-primary-foreground: oklch(0.985 0 0);
+            --color-secondary: oklch(0.97 0 0);
+            --color-secondary-foreground: oklch(0.205 0 0);
+            --color-muted: oklch(0.97 0 0);
+            --color-muted-foreground: oklch(0.556 0 0);
+            --color-accent: oklch(0.955 0 0);
+            --color-accent-foreground: oklch(0.205 0 0);
+            --color-destructive: oklch(0.577 0.245 27.325);
+            --color-border: oklch(0.922 0 0);
+            --color-input: oklch(0.922 0 0);
+            --color-ring: oklch(0.708 0 0);
+        }
+
+        @layer base {
+            * { border-color: var(--color-border); }
+            body { background-color: var(--color-background); color: var(--color-foreground); font-size: 0.875rem; }
+        }
+
+        /* Reusable "components" (the static-site equivalent of the Blade components) */
+        @layer components {
+            .icon { @apply size-4 shrink-0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+            .btn { @apply inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50; }
+            .btn-md { @apply h-9 px-4; }
+            .btn-sm { @apply h-8 px-3 text-xs; }
+            .btn-xs { @apply h-7 px-2 text-xs; }
+            .btn-primary { @apply bg-primary text-primary-foreground shadow-xs hover:bg-primary/90; }
+            .btn-destructive { @apply bg-destructive text-white shadow-xs hover:bg-destructive/90; }
+            .btn-outline { @apply border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground; }
+            .btn-secondary { @apply bg-secondary text-secondary-foreground hover:bg-secondary/80; }
+            .btn-ghost { @apply hover:bg-accent hover:text-accent-foreground; }
+
+            .input { @apply flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50; }
+            .label { @apply text-xs font-medium leading-none; }
+            .checkbox { @apply size-4 shrink-0 cursor-pointer rounded-[4px] border border-input accent-primary outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50; }
+            .kbd { @apply inline-flex h-5 items-center rounded border bg-background px-1.5 text-[10px] font-medium text-muted-foreground; }
+            .badge-warning { @apply inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900; }
+
+            .card { @apply rounded-xl border bg-card text-card-foreground shadow-sm; }
+            .card-header { @apply flex flex-wrap items-start justify-between gap-3 p-5 pb-0; }
+            .card-body { @apply p-5; }
+            .card-body-titled { @apply px-5 pb-5 pt-4; }
+            .stat { @apply rounded-xl border bg-card p-4 shadow-sm; }
+
+            .dialog-root { @apply fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center; }
+            .dialog-backdrop { @apply absolute inset-0 bg-black/50; }
+            .dialog-panel { @apply relative mt-[10vh] w-full max-w-[400px] overflow-hidden rounded-xl bg-card text-card-foreground shadow-lg sm:mt-0; }
+            .dialog-body { @apply space-y-4 p-5; }
+            .dialog-footer { @apply flex items-center justify-between gap-3 border-t bg-muted/40 px-5 py-3; }
+        }
+    </style>
+
+    <!-- Order matters: dayjs + Alpine plugins -> our code -> Alpine core (last) -->
+    <script src="js/config.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/sort@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="js/store.js"></script>
+    <script defer src="js/components.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+</head>
+
+<body class="min-h-screen bg-background font-sans text-foreground antialiased">
+
+    <!-- Icon sprite: <svg class="icon"><use href="#i-name"/></svg> -->
+    <svg width="0" height="0" class="absolute" aria-hidden="true">
+        <defs>
+            <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+            <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+            <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+            <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+            <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+            <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+            <symbol id="i-bell-off" viewBox="0 0 24 24"><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/></symbol>
+            <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+            <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+            <symbol id="i-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></symbol>
+            <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></symbol>
+        </defs>
+    </svg>
+
+    <div x-data="trackerPage" x-cloak class="mx-auto w-full max-w-[1800px] space-y-4 p-3 sm:space-y-6 sm:p-6">
+
+        <!-- Header -->
+        <header class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+                <h1 class="text-base font-semibold tracking-tight">Habit tracker</h1>
+                <p class="mt-1 truncate text-xs text-muted-foreground" x-text="subtitle"></p>
+            </div>
+
+            <div class="flex shrink-0 items-center gap-2" x-show="t.hasStarted">
+                <button type="button" class="btn btn-outline btn-sm" aria-label="Reminders"
+                        x-on:click="t.reminders.enabled ? t.disableReminders() : t.enableReminders()">
+                    <svg class="icon" x-show="t.reminders.enabled"><use href="#i-bell"/></svg>
+                    <svg class="icon" x-show="!t.reminders.enabled"><use href="#i-bell-off"/></svg>
+                    <span class="hidden sm:inline" x-text="t.reminders.enabled ? 'Reminders on' : 'Enable reminders'"></span>
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" aria-label="Profile" x-on:click="openSettings()">
+                    <svg class="icon"><use href="#i-user"/></svg> <span class="hidden sm:inline">Profile</span>
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" aria-label="Restart" x-on:click="$dispatch('open-dialog', 'restart')">
+                    <svg class="icon"><use href="#i-rotate"/></svg> <span class="hidden sm:inline">Restart</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Setup (name + start date) -->
+        <template x-if="!t.hasStarted">
+            <div class="mx-auto w-full max-w-md pt-2 sm:pt-8">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="text-sm font-semibold">Welcome</h2>
+                            <p class="mt-1 text-xs text-muted-foreground">Set up your month. Everything stays in this browser, no account needed.</p>
+                        </div>
+                    </div>
+                    <form class="card-body-titled space-y-4" x-on:submit.prevent="begin()">
+                        <div class="space-y-2">
+                            <label class="label" for="name">Your name</label>
+                            <input id="name" class="input" x-model="setup.name" placeholder="Your name" autocomplete="given-name" maxlength="40" autofocus>
+                            <p class="text-xs text-destructive" x-show="setupError" x-text="setupError"></p>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="label" for="start">Start date</label>
+                            <input id="start" type="date" class="input" x-model="setup.startDate" required>
+                            <p class="text-xs text-muted-foreground" x-text="preview(setup.startDate)"></p>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="label" for="reminder">Daily reminder time</label>
+                            <input id="reminder" type="time" class="input" x-model="setup.reminderTime">
+                        </div>
+
+                        <label class="flex cursor-pointer items-center gap-2 text-sm">
+                            <input type="checkbox" class="checkbox" x-model="enableNotifications">
+                            <span>Send me reminders (browser notifications)</span>
+                        </label>
+
+                        <button type="submit" class="btn btn-primary btn-md w-full">Start tracking</button>
+                    </form>
+                </div>
+            </div>
+        </template>
+
+        <!-- Tracker -->
+        <template x-if="t.hasStarted">
+            <div class="space-y-4 sm:space-y-6">
+
+                <div x-show="t.phase === 'upcoming'" class="rounded-lg border bg-muted/50 p-4 text-sm"
+                     x-text="'Your month starts on ' + t.start.format('dddd, D MMM YYYY') + '. Check-ins unlock on that day.'"></div>
+
+                <div x-show="t.phase === 'finished'" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/50 p-4 text-sm">
+                    <span x-text="'Month complete. You finished at ' + t.overallPercent + '% overall.'"></span>
+                    <button type="button" class="btn btn-primary btn-sm" x-on:click="$dispatch('open-dialog', 'restart')">Start a new month</button>
+                </div>
+
+                <!-- Stats -->
+                <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div class="stat">
+                        <p class="text-xs text-muted-foreground">Day</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight" x-text="t.dayNumber + ' / ' + t.totalDays"></p>
+                        <p class="mt-1 text-[11px] text-muted-foreground" x-text="t.start.format('D MMM') + ' – ' + t.end.format('D MMM')"></p>
+                    </div>
+                    <div class="stat">
+                        <p class="text-xs text-muted-foreground">Today</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight" x-text="t.todayDone + ' / ' + t.habits.length"></p>
+                        <p class="mt-1 text-[11px] text-muted-foreground" x-text="t.pending.length ? t.pending.length + ' left today' : 'All done'"></p>
+                    </div>
+                    <div class="stat">
+                        <p class="text-xs text-muted-foreground">Overall</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight" x-text="t.overallPercent + '%'"></p>
+                        <p class="mt-1 text-[11px] text-muted-foreground">completion so far</p>
+                    </div>
+                    <div class="stat">
+                        <p class="text-xs text-muted-foreground">Best streak</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight" x-text="t.bestStreak + (t.bestStreak === 1 ? ' day' : ' days')"></p>
+                        <p class="mt-1 text-[11px] text-muted-foreground">longest current run</p>
+                    </div>
+                </div>
+
+                <!-- Mobile quick check-in for today -->
+                <div class="card md:hidden" x-show="t.phase === 'active' && t.habits.length">
+                    <div class="card-header"><h2 class="text-sm font-semibold">Today</h2></div>
+                    <div class="card-body-titled">
+                        <div class="-my-1 divide-y">
+                            <template x-for="h in t.habits" :key="h.id">
+                                <button type="button" class="flex w-full cursor-pointer items-center justify-between gap-3 py-3 text-left"
+                                        x-on:click="t.toggle(h.id, t.todayStr)">
+                                    <span class="min-w-0 truncate text-sm" x-text="h.name"></span>
+                                    <span class="flex size-7 shrink-0 items-center justify-center rounded-md border transition-colors"
+                                          :class="t.isDone(h.id, t.todayStr) && 'border-primary bg-primary text-primary-foreground'">
+                                        <svg class="icon" x-show="t.isDone(h.id, t.todayStr)"><use href="#i-check"/></svg>
+                                    </span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Month grid -->
+                <div class="card overflow-hidden">
+                    <div x-ref="grid" class="overflow-x-auto overscroll-x-contain">
+                        <table class="w-full border-separate border-spacing-0 text-sm">
+                            <thead>
+                                <tr>
+                                    <th class="sticky left-0 z-10 min-w-40 border-b border-r bg-card px-3 py-2 text-left text-xs font-bold uppercase tracking-wide sm:min-w-56 sm:px-4">
+                                        Habits/Protocols
+                                    </th>
+                                    <template x-for="d in t.days" :key="d.date">
+                                        <th class="w-10 min-w-10 border-b border-r px-0 py-1.5 text-center text-xs font-bold last:border-r-0"
+                                            :class="d.isToday && 'bg-primary text-primary-foreground'"
+                                            :data-today="d.isToday ? '1' : null" :title="d.full">
+                                            <div x-text="d.num"></div>
+                                            <div class="text-[9px] font-normal opacity-60" x-text="d.label"></div>
+                                        </th>
+                                    </template>
+                                </tr>
+                            </thead>
+
+                            <!-- x-sort: drag the grip handle to re-arrange habits (touch works too) -->
+                            <tbody x-sort="t.moveHabit($item, $position)">
+                                <template x-for="h in t.habits" :key="h.id">
+                                    <tr class="group bg-card" x-sort:item="h.id">
+                                        <td class="sticky left-0 z-10 max-w-44 border-b border-r bg-card px-2 py-1.5 sm:max-w-72 sm:px-3">
+                                            <div class="flex items-center gap-1.5">
+                                                <span x-sort:handle class="flex h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                                                      aria-label="Drag to re-arrange" title="Drag to re-arrange">
+                                                    <svg class="icon"><use href="#i-grip"/></svg>
+                                                </span>
+                                                <div class="min-w-0 flex-1">
+                                                    <p class="truncate text-sm" x-text="h.name" :title="h.name"></p>
+                                                    <p class="truncate text-[10px] text-muted-foreground"
+                                                       x-text="t.doneCount(h.id) + '/' + t.elapsed + ' days · streak ' + t.streak(h.id)"></p>
+                                                </div>
+                                                <button type="button"
+                                                        class="shrink-0 rounded p-1 text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                                        :aria-label="'Rename ' + h.name" title="Rename" x-on:click="openEdit(h)">
+                                                    <svg class="icon size-3.5"><use href="#i-pencil"/></svg>
+                                                </button>
+                                                <button type="button"
+                                                        class="shrink-0 rounded p-1 text-muted-foreground transition hover:bg-accent hover:text-destructive focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                                        :aria-label="'Delete ' + h.name" title="Delete" x-on:click="confirmDelete(h)">
+                                                    <svg class="icon size-3.5"><use href="#i-trash"/></svg>
+                                                </button>
+                                            </div>
+                                        </td>
+
+                                        <template x-for="d in t.days" :key="d.date">
+                                            <td class="h-10 w-10 min-w-10 border-b border-r p-0 last:border-r-0" :class="d.isToday && 'bg-accent'">
+                                                <button type="button"
+                                                        class="flex h-10 w-full items-center justify-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                                        :class="t.isDone(h.id, d.date)
+                                                            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                                            : (d.isFuture ? 'cursor-not-allowed bg-muted/40' : 'cursor-pointer hover:bg-accent')"
+                                                        :aria-pressed="t.isDone(h.id, d.date)"
+                                                        :aria-disabled="d.isFuture"
+                                                        :aria-label="h.name + ', ' + d.full"
+                                                        x-on:click="t.toggle(h.id, d.date)">
+                                                    <svg class="icon" x-show="t.isDone(h.id, d.date)"><use href="#i-check"/></svg>
+                                                </button>
+                                            </td>
+                                        </template>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p x-show="!t.habits.length" class="px-4 py-6 text-center text-xs text-muted-foreground">No habits yet. Create your first one.</p>
+
+                    <div class="flex flex-wrap items-center justify-between gap-3 p-3">
+                        <button type="button" class="btn btn-primary btn-sm" x-on:click="$dispatch('open-dialog', 'create-habit')">
+                            <svg class="icon"><use href="#i-plus"/></svg> New habit
+                        </button>
+                        <p class="text-xs text-muted-foreground">Tap a cell to check a day. Drag the grip to re-arrange.</p>
+                    </div>
+                </div>
+
+                <!-- Progress graph -->
+                <div class="card" x-data="progressChart">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="text-sm font-semibold">Progress</h2>
+                            <p class="mt-1 text-xs text-muted-foreground">Pick the habits you want to see.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="btn btn-outline btn-xs" x-on:click="t.setChart({ metric: 'progress' })"
+                                    :class="t.chart.metric === 'progress' && 'bg-primary text-primary-foreground hover:bg-primary/90'">Progress</button>
+                            <button type="button" class="btn btn-outline btn-xs" x-on:click="t.setChart({ metric: 'rate' })"
+                                    :class="t.chart.metric === 'rate' && 'bg-primary text-primary-foreground hover:bg-primary/90'">Consistency</button>
+                        </div>
+                    </div>
+
+                    <div class="card-body-titled">
+                        <div class="mb-4 flex flex-wrap items-center gap-2">
+                            <template x-for="h in t.habits" :key="h.id">
+                                <button type="button"
+                                        class="inline-flex max-w-full cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1 text-xs outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                        :class="isVisible(h.id) ? 'bg-accent' : 'text-muted-foreground opacity-60'"
+                                        :aria-pressed="isVisible(h.id)" x-on:click="toggle(h.id)">
+                                    <span class="size-2 shrink-0 rounded-full" :style="'background:' + color(h.id)"></span>
+                                    <span class="truncate" x-text="h.name"></span>
+                                </button>
+                            </template>
+                            <button type="button" class="btn btn-ghost btn-xs" x-on:click="showAll()">All</button>
+                            <button type="button" class="btn btn-ghost btn-xs" x-on:click="hideAll()">None</button>
+                        </div>
+
+                        <!-- Scrolls sideways on narrow screens instead of shrinking the labels -->
+                        <div class="-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0">
+                            <div class="relative min-w-[560px]">
+                                <svg x-ref="svg" viewBox="0 0 800 300" class="h-auto w-full touch-pan-x select-none" role="img"
+                                     aria-label="Habit progress over the month"
+                                     x-on:pointermove="onMove($event)" x-on:pointerleave="hover = null">
+                                    <g x-html="svg"></g>
+                                </svg>
+
+                                <template x-if="tip">
+                                    <div class="pointer-events-none absolute top-2 z-10 min-w-40 rounded-lg border bg-card p-3 text-xs shadow-md" :style="tip.style">
+                                        <p class="mb-2 font-semibold" x-text="tip.title"></p>
+                                        <template x-for="item in tip.items" :key="item.id">
+                                            <div class="flex items-center justify-between gap-4">
+                                                <span class="flex items-center gap-2">
+                                                    <span class="size-2 rounded-full" :style="'background:' + item.color"></span>
+                                                    <span x-text="item.name"></span>
+                                                </span>
+                                                <span class="font-medium" x-text="item.value"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+
+                                <p x-show="!visible.length" class="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                                    Select at least one habit.
+                                </p>
+                            </div>
+                        </div>
+
+                        <p class="mt-3 text-xs text-muted-foreground" x-text="metricHint"></p>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <footer class="flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-xs text-muted-foreground" x-show="t.hasStarted || t.hasProfile">
+            <p>Your data lives only in this browser (localStorage).</p>
+            <button type="button" class="btn btn-ghost btn-xs" x-on:click="$dispatch('open-dialog', 'reset-all')">Reset all data</button>
+        </footer>
+
+        <!-- Dialogs: <div x-data="dialog('id')" x-bind="root"> ... (focus is trapped with Alpine's focus plugin) -->
+        <div x-data="dialog('create-habit')" x-bind="root">
+            <div x-show="show" x-cloak class="dialog-root" role="dialog" aria-modal="true" aria-label="Create habit">
+                <div x-show="show" x-transition.opacity.duration.150ms x-on:click="show = false" class="dialog-backdrop"></div>
+                <div x-show="show" x-trap.noscroll="show" x-transition.opacity.scale.95.duration.150ms class="dialog-panel">
+                    <div class="dialog-body">
+                        <h2 class="text-sm font-semibold">Create habit</h2>
+                        <form id="create-habit-form" x-on:submit.prevent="if (t.addHabit(newHabit)) { newHabit = ''; $dispatch('close-dialog', 'create-habit') }">
+                            <input class="input" x-model="newHabit" placeholder="Read 20 pages" maxlength="60" autocomplete="off" aria-label="Habit name">
+                        </form>
+                    </div>
+                    <div class="dialog-footer">
+                        <p class="flex items-center gap-2 text-xs text-muted-foreground"><kbd class="kbd">Esc</kbd> to close</p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="btn btn-outline btn-sm" x-on:click="show = false">Cancel</button>
+                            <button type="submit" form="create-habit-form" class="btn btn-primary btn-sm" :disabled="!newHabit.trim()">Create</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div x-data="dialog('edit-habit')" x-bind="root">
+            <div x-show="show" x-cloak class="dialog-root" role="dialog" aria-modal="true" aria-label="Rename habit">
+                <div x-show="show" x-transition.opacity.duration.150ms x-on:click="show = false" class="dialog-backdrop"></div>
+                <div x-show="show" x-trap.noscroll="show" x-transition.opacity.scale.95.duration.150ms class="dialog-panel">
+                    <div class="dialog-body">
+                        <h2 class="text-sm font-semibold">Rename habit</h2>
+                        <form id="edit-habit-form" x-on:submit.prevent="if (t.renameHabit(habitToEdit.id, editName)) show = false">
+                            <input class="input" x-model="editName" maxlength="60" autocomplete="off" aria-label="Habit name">
+                        </form>
+                    </div>
+                    <div class="dialog-footer">
+                        <p class="flex items-center gap-2 text-xs text-muted-foreground"><kbd class="kbd">Esc</kbd> to close</p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="btn btn-outline btn-sm" x-on:click="show = false">Cancel</button>
+                            <button type="submit" form="edit-habit-form" class="btn btn-primary btn-sm" :disabled="!editName.trim()">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div x-data="dialog('delete-habit')" x-bind="root">
+            <div x-show="show" x-cloak class="dialog-root" role="dialog" aria-modal="true" aria-label="Delete habit">
+                <div x-show="show" x-transition.opacity.duration.150ms x-on:click="show = false" class="dialog-backdrop"></div>
+                <div x-show="show" x-trap.noscroll="show" x-transition.opacity.scale.95.duration.150ms class="dialog-panel">
+                    <div class="dialog-body">
+                        <h2 class="text-sm font-semibold">Delete habit</h2>
+                        <p class="text-xs text-muted-foreground">
+                            Delete <span class="font-medium text-foreground" x-text="habitToDelete?.name"></span>? Its check-ins are removed too.
+                        </p>
+                    </div>
+                    <div class="dialog-footer">
+                        <p class="flex items-center gap-2 text-xs text-muted-foreground"><kbd class="kbd">Esc</kbd> to close</p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="btn btn-outline btn-sm" x-on:click="show = false">Cancel</button>
+                            <button type="button" class="btn btn-destructive btn-sm" x-on:click="t.removeHabit(habitToDelete.id); show = false">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div x-data="dialog('settings')" x-bind="root">
+            <div x-show="show" x-cloak class="dialog-root" role="dialog" aria-modal="true" aria-label="Profile">
+                <div x-show="show" x-transition.opacity.duration.150ms x-on:click="show = false" class="dialog-backdrop"></div>
+                <div x-show="show" x-trap.noscroll="show" x-transition.opacity.scale.95.duration.150ms class="dialog-panel">
+                    <div class="dialog-body">
+                        <h2 class="text-sm font-semibold">Profile</h2>
+                        <form id="settings-form" class="space-y-4" x-on:submit.prevent="saveSettings()">
+                            <div class="space-y-2">
+                                <label class="label" for="s-name">Name</label>
+                                <input id="s-name" class="input" x-model="settings.name" maxlength="40" required>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="label" for="s-time">Daily reminder time</label>
+                                <input id="s-time" type="time" class="input" x-model="settings.reminderTime">
+                            </div>
+                        </form>
+                    </div>
+                    <div class="dialog-footer">
+                        <p class="flex items-center gap-2 text-xs text-muted-foreground"><kbd class="kbd">Esc</kbd> to close</p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="btn btn-outline btn-sm" x-on:click="show = false">Cancel</button>
+                            <button type="submit" form="settings-form" class="btn btn-primary btn-sm">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div x-data="dialog('restart')" x-bind="root">
+            <div x-show="show" x-cloak class="dialog-root" role="dialog" aria-modal="true" aria-label="Start a new month">
+                <div x-show="show" x-transition.opacity.duration.150ms x-on:click="show = false" class="dialog-backdrop"></div>
+                <div x-show="show" x-trap.noscroll="show" x-transition.opacity.scale.95.duration.150ms class="dialog-panel">
+                    <div class="dialog-body">
+                        <div>
+                            <h2 class="text-sm font-semibold">Start a new month</h2>
+                            <p class="mt-1 text-xs text-muted-foreground">Pick a new start date. Your habits are kept, check-ins are cleared.</p>
+                        </div>
+                        <form id="restart-form" class="space-y-2" x-on:submit.prevent="t.startTracking(restartInput); show = false">
+                            <input type="date" class="input" x-model="restartInput" required aria-label="Start date">
+                            <p class="text-xs text-muted-foreground" x-text="preview(restartInput)"></p>
+                        </form>
+                    </div>
+                    <div class="dialog-footer">
+                        <p class="flex items-center gap-2 text-xs text-muted-foreground"><kbd class="kbd">Esc</kbd> to close</p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="btn btn-outline btn-sm" x-on:click="show = false">Cancel</button>
+                            <button type="submit" form="restart-form" class="btn btn-primary btn-sm">Start</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div x-data="dialog('reset-all')" x-bind="root">
+            <div x-show="show" x-cloak class="dialog-root" role="dialog" aria-modal="true" aria-label="Reset all data">
+                <div x-show="show" x-transition.opacity.duration.150ms x-on:click="show = false" class="dialog-backdrop"></div>
+                <div x-show="show" x-trap.noscroll="show" x-transition.opacity.scale.95.duration.150ms class="dialog-panel">
+                    <div class="dialog-body">
+                        <div>
+                            <h2 class="text-sm font-semibold">Reset all data</h2>
+                            <p class="mt-1 text-xs text-muted-foreground">This deletes your profile, habits and check-ins from this browser.</p>
+                        </div>
+                    </div>
+                    <div class="dialog-footer">
+                        <p class="flex items-center gap-2 text-xs text-muted-foreground"><kbd class="kbd">Esc</kbd> to close</p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="btn btn-outline btn-sm" x-on:click="show = false">Cancel</button>
+                            <button type="button" class="btn btn-destructive btn-sm" x-on:click="resetEverything()">Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toasts (needs its own x-data root, otherwise Alpine never initialises it) -->
+    <div x-data class="pointer-events-none fixed inset-x-4 bottom-4 z-[60] flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-80" aria-live="polite">
+        <template x-for="item in $store.toasts.items" :key="item.id">
+            <div class="pointer-events-auto flex items-start gap-3 rounded-lg border bg-card p-4 shadow-lg"
+                 :class="item.variant === 'destructive' && 'border-destructive/40'">
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium" :class="item.variant === 'destructive' && 'text-destructive'" x-text="item.title"></p>
+                    <p class="mt-1 text-xs text-muted-foreground" x-show="item.description" x-text="item.description"></p>
+                </div>
+                <button type="button" class="rounded p-0.5 text-muted-foreground hover:text-foreground" aria-label="Dismiss" x-on:click="$store.toasts.dismiss(item.id)">
+                    <svg class="icon size-3.5"><use href="#i-x"/></svg>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <!-- Debug panel: only exists when js/config.js has debug: true -->
+    <div x-data>
+        <template x-if="window.HabitConfig.debug">
+            <div x-data="{ open: $persist(true).as('ht:debug-open'), get t() { return this.$store.tracker } }"
+                 class="fixed bottom-4 left-4 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-dashed border-amber-500 bg-card text-xs shadow-lg">
+                <button type="button" class="flex w-full items-center justify-between px-3 py-2" x-on:click="open = !open">
+                    <span class="flex items-center gap-2 font-semibold">
+                        <svg class="icon size-3.5"><use href="#i-terminal"/></svg> Debug <span class="badge-warning">testing only</span>
+                    </span>
+                    <span x-text="open ? '−' : '+'"></span>
+                </button>
+
+                <div x-show="open" class="space-y-3 border-t p-3">
+                    <dl class="grid grid-cols-2 gap-x-3 gap-y-1">
+                        <dt class="text-muted-foreground">Today</dt>
+                        <dd class="text-right font-medium" x-text="t.todayStr + (t.debugDate ? ' (simulated)' : ' (real)')"></dd>
+                        <dt class="text-muted-foreground">Phase</dt>
+                        <dd class="text-right font-medium" x-text="t.phase"></dd>
+                        <dt class="text-muted-foreground">Day</dt>
+                        <dd class="text-right font-medium" x-text="t.hasStarted ? t.dayNumber + ' / ' + t.totalDays : '-'"></dd>
+                        <dt class="text-muted-foreground">Notifications</dt>
+                        <dd class="text-right font-medium" x-text="t.permission + (t.reminders.enabled ? ' / on' : ' / off')"></dd>
+                        <dt class="text-muted-foreground">Secure context</dt>
+                        <dd class="text-right font-medium" x-text="window.isSecureContext ? 'yes' : 'NO (https needed)'"></dd>
+                    </dl>
+
+                    <input type="date" class="input" :value="t.todayStr" x-on:change="t.debugSet($event.target.value)">
+
+                    <div class="grid grid-cols-5 gap-1">
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.debugShift(-7)">-7</button>
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.debugShift(-1)">-1</button>
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.debugShift(1)">+1</button>
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.debugShift(7)">+7</button>
+                        <button type="button" class="btn btn-secondary btn-xs" x-on:click="t.debugReset()">Real</button>
+                    </div>
+
+                    <div>
+                        <p class="mb-1 text-muted-foreground">Upcoming dates</p>
+                        <div class="flex flex-wrap gap-1">
+                            <template x-for="u in t.upcoming(7)" :key="u.date">
+                                <button type="button" class="btn btn-outline btn-xs" x-on:click="t.debugSet(u.date)" x-text="u.label"></button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-1">
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.checkReminder(true)">Test reminder</button>
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.notify({ title: 'Test toast', description: 'Looks good.', system: true })">Test toast</button>
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.debugFillRandom()">Fill random</button>
+                        <button type="button" class="btn btn-outline btn-xs" x-on:click="t.debugClearLog()">Clear check-ins</button>
+                        <button type="button" class="btn btn-outline btn-xs col-span-2" x-show="t.hasStarted" x-on:click="t.debugSet(t.end.format('YYYY-MM-DD'))">Jump to last day</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</body>
+</html>
